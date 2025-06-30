@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attendance History</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+            width: 80%;
+            max-width: 600px;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        ul {
+            list-style: none;
+            padding: 0;
+        }
+        li {
+            background: #f9f9f9;
+            padding: 1rem;
+            border-bottom: 1px solid #ccc;
+        }
+        li:last-child {
+            border-bottom: none;
+        }
+        a {
+            display: block;
+            margin-top: 1rem;
+            padding: 0.5rem;
+            background-color: #007bff;
+            color: white;
+            text-align: center;
+            text-decoration: none;
+            border-radius: 5px;
+        }
+        a:hover {
+            background-color: #0056b3;
+        }
+        .check-in {
+            color: green;
+        }
+        .check-out {
+            color: red;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Attendance History</h1>
+        <ul>
+            <th:block th:each="attendance : ${attendanceRecords}">
+                <li>
+                    <strong th:text="${attendance.user.username}"></strong> - 
+                    <span class="check-in">Check-in: 
+                        <span th:text="${attendance.checkInTime != null ? #temporals.format(attendance.checkInTime, 'dd/MM/yy, hh:mm a') : 'Not marked'}"></span>
+                    </span>
+                    <th:block th:if="${attendance.checkOutTime != null}">
+                        <span class="check-out">, Check-out: 
+                            <span th:text="${#temporals.format(attendance.checkOutTime, 'dd/MM/yy, hh:mm a')}"></span>
+                        </span>
+                    </th:block>
+                </li>
+            </th:block>
+        </ul>
+        <a href="/manager/dashboard">Back to Dashboard</a>
+    </div>
+</body>
+</html>

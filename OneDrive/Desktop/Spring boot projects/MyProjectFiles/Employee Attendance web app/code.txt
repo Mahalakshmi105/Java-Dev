@@ -1,0 +1,1700 @@
+AdminController.java
+
+package com.attendanceapp.controller;
+
+import java.util.List;
+
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+
+import com.attendanceapp.Repositories.UserRepository;
+import com.attendanceapp.model.User;
+import com.attendanceapp.model.User.Role;
+
+@Controller
+public class AdminController {
+
+    private final UserRepository userRepository;
+
+    public AdminController(UserRepository userRepository) {
+        this.userRepository = userRepository;
+    }
+
+    @GetMapping("/admin/dashboard")
+    public String adminDashboard() {
+        return "admin";
+    }
+
+    @GetMapping("/admin/add-user")
+    public String showAddUserForm() {
+        return "add-user";
+    }
+
+    @PostMapping("/admin/add-user")
+    public String addUser(@RequestParam String username, 
+                          @RequestParam String password,
+                          @RequestParam Role role) {
+        // Create and save user
+        User user = User.builder()
+                .username(username)
+                .password(password)
+                .role(role)
+                .build();
+        userRepository.save(user);
+        return "redirect:/admin/view-users";
+    }
+
+    @GetMapping("/admin/view-users")
+    public String viewUsers(Model model) {
+        List<User> users = userRepository.findAll();
+        model.addAttribute("users", users);
+        return "view-users";
+    }
+}
+----------------------------------------------------
+AttendanceController.java
+
+package com.attendanceapp.controller;
+
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+
+import com.attendanceapp.Repositories.UserRepository;
+import com.attendanceapp.model.User;
+import com.attendanceapp.service.AttendanceService;
+
+@Controller
+public class AttendanceController {
+
+    private final AttendanceService attendanceService;
+    private final UserRepository userRepository;
+
+    public AttendanceController(AttendanceService attendanceService, UserRepository userRepository) {
+        this.attendanceService = attendanceService;
+        this.userRepository = userRepository;
+    }
+
+    @PostMapping("/employee/check-in")
+    public String checkIn(@AuthenticationPrincipal UserDetails userDetails, Model model) {
+        if (userDetails == null) {
+            model.addAttribute("error", "Authenticated user not found.");
+            return "error";
+        }
+        User user = userRepository.findByUsername(userDetails.getUsername())
+            .orElse(null);
+        if (user == null) {
+            model.addAttribute("error", "User not found in database.");
+            return "error";
+        }
+        try {
+            attendanceService.checkIn(user);
+            model.addAttribute("success", "Checked in successfully!");
+            model.addAttribute("attendanceHistory", attendanceService.getAttendanceHistory(user));
+        } catch (IllegalStateException | IllegalArgumentException e) {
+            model.addAttribute("error", e.getMessage());
+        }
+        return "employee-attendance";
+    }
+
+    @PostMapping("/employee/check-out")
+    public String checkOut(@AuthenticationPrincipal UserDetails userDetails, Model model) {
+        if (userDetails == null) {
+            model.addAttribute("error", "Authenticated user not found.");
+            return "error";
+        }
+        User user = userRepository.findByUsername(userDetails.getUsername())
+            .orElse(null);
+        if (user == null) {
+            model.addAttribute("error", "User not found in database.");
+            return "error";
+        }
+        try {
+            attendanceService.checkOut(user);
+            model.addAttribute("success", "Checked out successfully!");
+            model.addAttribute("attendanceHistory", attendanceService.getAttendanceHistory(user));
+        } catch (IllegalStateException | IllegalArgumentException e) {
+            model.addAttribute("error", e.getMessage());
+        }
+        return "employee-attendance";
+    }
+
+    @GetMapping("/employee/attendance")
+    public String viewAttendanceHistory(@AuthenticationPrincipal UserDetails userDetails, Model model) {
+        if (userDetails == null) {
+            model.addAttribute("error", "Authenticated user not found.");
+            return "employee";
+        }
+        User user = userRepository.findByUsername(userDetails.getUsername()).orElse(null);
+        if (user == null) {
+            model.addAttribute("error", "User not found in database.");
+            return "employee";
+        }
+        model.addAttribute("attendanceHistory", attendanceService.getAttendanceHistory(user));
+        return "employee-attendance";
+    }
+
+    @ExceptionHandler(Exception.class)
+    public String handleException(Exception e, Model model) {
+        e.printStackTrace();
+        model.addAttribute("errorMessage", e.getMessage());
+        return "error";
+    }
+}
+
+--------------------------------------------------------------------------
+DashboardController.java
+
+package com.attendanceapp.controller;
+
+import org.springframework.security.core.Authentication;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.GetMapping;
+
+@Controller
+public class DashboardController {
+    @GetMapping("/dashboard")
+    public String dashboard(Authentication authentication, Model model) {
+        String role = authentication.getAuthorities().iterator().next().getAuthority();
+        
+        switch (role) {
+            case "ROLE_ADMIN":
+                return "admin";
+            case "ROLE_MANAGER":
+                return "manager";
+            case "ROLE_EMPLOYEE":
+                return "employee";
+            default:
+                return "redirect:/login";
+        }
+    }
+}
+
+---------------------------------------------------------------
+EmployeeController.java
+
+package com.attendanceapp.controller;
+
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+
+import com.attendanceapp.model.User;
+import com.attendanceapp.service.AttendanceService;
+import com.attendanceapp.service.UserService;
+
+@Controller
+public class EmployeeController {
+
+    private final UserService userService;
+    private final AttendanceService attendanceService;
+
+    public EmployeeController(UserService userService, AttendanceService attendanceService) {
+        this.userService = userService;
+        this.attendanceService = attendanceService;
+    }
+
+    @GetMapping("/employee/dashboard")
+    public String employeeDashboard() {
+        return "employee";
+    }
+
+    @PostMapping("/employee/manual-check-in")
+    public String manualCheckIn(@RequestParam String username, Model model) {
+        User user = userService.findByUsername(username);
+        if (user == null) {
+            model.addAttribute("error", "User not found!");
+            return "employee";
+        }
+        try {
+            attendanceService.checkIn(user);
+            model.addAttribute("success", "Checked in successfully!");
+            return "check-in-success";
+        } catch (IllegalStateException | IllegalArgumentException e) {
+            model.addAttribute("error", e.getMessage());
+            return "employee";
+        }
+    }
+
+    @PostMapping("/employee/manual-check-out")
+    public String manualCheckOut(@RequestParam String username, Model model) {
+        User user = userService.findByUsername(username);
+        if (user == null) {
+            model.addAttribute("error", "User not found!");
+            return "employee";
+        }
+        try {
+            attendanceService.checkOut(user);
+            model.addAttribute("success", "Checked out successfully!");
+            return "check-out-success";
+        } catch (IllegalStateException | IllegalArgumentException e) {
+            model.addAttribute("error", e.getMessage());
+            return "employee";
+        }
+    }
+}
+
+
+---------------------------------------------------------------------------
+LoginController.java
+package com.attendanceapp.controller;
+
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.GetMapping;
+
+@Controller
+public class LoginController {
+    @GetMapping("/login")
+    public String login() {
+        return "login";
+    }
+}
+-----------------------------------------------------------------------
+ManagerController.java
+package com.attendanceapp.controller;
+
+import java.time.LocalDateTime;
+import java.util.List;
+
+import org.springframework.security.core.Authentication;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+
+import com.attendanceapp.Repositories.AttendanceRepository;
+import com.attendanceapp.Repositories.UserRepository;
+import com.attendanceapp.model.Attendance;
+import com.attendanceapp.model.User;
+
+@Controller
+public class ManagerController {
+
+    private final UserRepository userRepository;
+    private final AttendanceRepository attendanceRepository;
+
+    public ManagerController(UserRepository userRepository, AttendanceRepository attendanceRepository) {
+        this.userRepository = userRepository;
+        this.attendanceRepository = attendanceRepository;
+    }
+
+    @GetMapping("/manager/dashboard")
+    public String managerDashboard() {
+        return "manager";
+    }
+
+    @GetMapping("/manager/mark-attendance")
+    public String showMarkAttendanceForm(Model model, Authentication authentication) {
+        System.out.println("Authenticated user: " + authentication.getName());
+        System.out.println("Roles: " + authentication.getAuthorities());
+        List<User> users = userRepository.findAll();
+        model.addAttribute("users", users);
+        return "mark-attendance";
+    }
+
+
+    @PostMapping("/manager/mark-attendance")
+    public String markAttendance(@RequestParam(required = false) Long userId) {
+        if (userId == null) {
+            System.out.println("Error: userId is null.");
+            return "redirect:/manager/mark-attendance?error=invalidUser";
+        }
+        System.out.println("Received request to mark attendance for user ID: " + userId);
+
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new IllegalArgumentException("Invalid user ID: " + userId));
+
+        LocalDateTime startOfDay = LocalDateTime.now().toLocalDate().atStartOfDay();
+        LocalDateTime endOfDay = startOfDay.plusDays(1);
+
+        List<Attendance> userAttendances = attendanceRepository.findByUser(user);
+
+        boolean alreadyCheckedIn = userAttendances.stream()
+            .filter(a -> a.getCheckInTime() != null)
+            .anyMatch(a -> a.getCheckInTime().isAfter(startOfDay) && a.getCheckInTime().isBefore(endOfDay));
+
+        if (!alreadyCheckedIn) {
+            Attendance attendance = new Attendance(user, LocalDateTime.now());
+            attendanceRepository.save(attendance);
+        } else {
+            System.out.println("User has already checked in today.");
+        }
+
+        return "redirect:/manager/view-attendance";
+    }
+
+
+    @GetMapping("/manager/view-attendance")
+    public String viewAttendance(Model model) {
+        List<Attendance> attendanceRecords = attendanceRepository.findAll();
+        attendanceRecords.removeIf(a -> a.getCheckInTime() == null); // filter out null check-ins
+        model.addAttribute("attendanceRecords", attendanceRecords);
+        return "view-attendance";
+    }
+
+}
+------------------------------------------------------------------
+
+Attendance.java
+
+package com.attendanceapp.model;
+
+import jakarta.persistence.*;
+import java.time.LocalDateTime;
+
+@Entity
+public class Attendance {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
+
+    private LocalDateTime checkInTime;
+    private LocalDateTime checkOutTime;
+
+    // Constructors, getters, and setters
+    public Attendance() {}
+
+    public Attendance(User user, LocalDateTime checkInTime) {
+        this.user = user;
+        this.checkInTime = checkInTime;
+    }
+
+    public Long getId() { return id; }
+    public User getUser() { return user; }
+    public LocalDateTime getCheckInTime() { return checkInTime; }
+    public LocalDateTime getCheckOutTime() { return checkOutTime; }
+    public void setCheckOutTime(LocalDateTime checkOutTime) { this.checkOutTime = checkOutTime; }
+    public void setUser(User user) {
+        this.user = user;
+    }
+    public void setCheckInTime(LocalDateTime checkInTime) {
+        this.checkInTime = checkInTime;
+    }
+}
+
+---------------------------------------------------------------------
+User.java
+
+package com.attendanceapp.model;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.userdetails.UserDetails;
+import lombok.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+
+import java.util.Collection;
+import java.util.Collections;
+
+@Entity
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class User implements UserDetails {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(unique = true, nullable = false)
+    private String username;
+
+    @Column(nullable = false)
+    private String password;
+
+    @Enumerated(EnumType.STRING)
+    private Role role;
+
+    public enum Role {
+        EMPLOYEE, MANAGER, ADMIN
+    }
+
+    @Override
+    public Collection<? extends GrantedAuthority> getAuthorities() {
+        return Collections.emptyList(); // Or map roles to authorities
+    }
+
+    @Override
+    public boolean isAccountNonExpired() { return true; }
+
+    @Override
+    public boolean isAccountNonLocked() { return true; }
+
+    @Override
+    public boolean isCredentialsNonExpired() { return true; }
+
+    @Override
+    public boolean isEnabled() { return true; }
+}
+------------------------------------------------------------
+AttendanceRepository.java
+package com.attendanceapp.Repositories;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
+import com.attendanceapp.model.Attendance;
+import com.attendanceapp.model.User;
+
+public interface AttendanceRepository extends JpaRepository<Attendance, Long> {
+
+    // Find all attendance records for a specific user
+    List<Attendance> findByUser(User user);
+
+    // Find attendance records for a specific date (based on check-in time's date)
+    @Query("SELECT a FROM Attendance a WHERE DATE(a.checkInTime) = :date")
+    List<Attendance> findByDate(@Param("date") LocalDate date);
+
+    // Find attendance records for a user on a specific date
+    @Query("SELECT a FROM Attendance a WHERE a.user = :user AND DATE(a.checkInTime) = :date")
+    List<Attendance> findByUserAndDate(@Param("user") User user, @Param("date") LocalDate date);
+
+    // Find all users who checked in on a particular date (for attendance summary)
+    @Query("SELECT a.user FROM Attendance a WHERE DATE(a.checkInTime) = :date")
+    List<User> findUsersByDate(@Param("date") LocalDate date);
+
+    // Count present users for a particular day (by checking who checked in)
+    @Query("SELECT COUNT(a) FROM Attendance a WHERE DATE(a.checkInTime) = :date")
+    long countByDate(@Param("date") LocalDate date);
+
+    // Find all records between check-in and check-out timestamps (for reports)
+    List<Attendance> findByCheckInTimeBetween(LocalDateTime start, LocalDateTime end);
+}
+
+
+-----------------------------------------------------------------
+UserRepository.java
+package com.attendanceapp.Repositories;
+
+import com.attendanceapp.model.User;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import java.util.Optional;
+public interface UserRepository extends JpaRepository<User, Long> {
+    Optional<User> findByUsername(String username);
+}
+
+-------------------------------------------------------------
+
+CustomUserDetailsService.java
+package com.attendanceapp.security;
+
+import com.attendanceapp.model.User;
+import com.attendanceapp.Repositories.UserRepository;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.stereotype.Service;
+
+@Service
+public class CustomUserDetailsService implements UserDetailsService {
+    private final UserRepository userRepository;
+
+    public CustomUserDetailsService(UserRepository userRepository) {
+        this.userRepository = userRepository;
+    }
+
+    @Override
+    public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
+
+        return org.springframework.security.core.userdetails.User.builder()
+                .username(user.getUsername())
+                .password(user.getPassword())
+                .authorities("ROLE_" + user.getRole()) // Prefix roles with ROLE_
+                .build();
+    }
+}
+
+-----------------------------------------------------------------
+
+SecurityConfig.java
+package com.attendanceapp.security;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.authentication.AuthenticationProvider;
+import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.SecurityFilterChain;
+
+@Configuration
+public class SecurityConfig {
+
+    private final CustomUserDetailsService userDetailsService;
+
+    public SecurityConfig(CustomUserDetailsService userDetailsService) {
+        this.userDetailsService = userDetailsService;
+    }
+
+    @Bean
+    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        http
+            .authorizeHttpRequests(auth -> auth
+                .requestMatchers("/admin/**").hasRole("ADMIN")  // Automatically looks for ROLE_ADMIN
+                .requestMatchers("/manager/**").hasRole("MANAGER") // Looks for ROLE_MANAGER
+                .requestMatchers("/employee/**").hasRole("EMPLOYEE") // Looks for ROLE_EMPLOYEE
+                .anyRequest().authenticated()
+            )
+            .formLogin(login -> login
+                .loginPage("/login")
+                .defaultSuccessUrl("/dashboard", true)
+                .failureUrl("/login?error=true")
+                .permitAll()
+            )
+            .logout(logout -> logout
+                .logoutUrl("/logout")
+                .logoutSuccessUrl("/login?logout=true")
+                .permitAll()
+            )
+            .csrf(csrf -> csrf.disable()); // Disable CSRF for testing (enable in production)
+
+        return http.build();
+    }
+
+    @Bean
+    public AuthenticationProvider authenticationProvider() {
+        DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
+        authProvider.setUserDetailsService(userDetailsService);
+        authProvider.setPasswordEncoder(passwordEncoder());
+        return authProvider;
+    }
+
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new PasswordEncoder() {
+            @Override
+            public String encode(CharSequence rawPassword) {
+                return rawPassword.toString(); // No encoding, plain text (for testing)
+            }
+
+            @Override
+            public boolean matches(CharSequence rawPassword, String encodedPassword) {
+                return rawPassword.toString().equals(encodedPassword); // Simple comparison
+            }
+        };
+    }
+}
+
+------------------------------------------------------
+AttendanceService.java
+package com.attendanceapp.service;
+
+import java.time.LocalDateTime;
+import java.util.List;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.attendanceapp.Repositories.AttendanceRepository;
+import com.attendanceapp.model.Attendance;
+import com.attendanceapp.model.User;
+
+@Service
+public class AttendanceService {
+
+    private final AttendanceRepository attendanceRepository;
+
+    public AttendanceService(AttendanceRepository attendanceRepository) {
+        this.attendanceRepository = attendanceRepository;
+    }
+
+    @Transactional
+    public void checkIn(User user) {
+        if (user == null || user.getId() == null) {
+            throw new IllegalArgumentException("User cannot be null and must have a valid ID during check-in");
+        }
+        System.out.println("Checking in user: " + user.getUsername());
+
+        // Ensure user hasn't already checked in without checking out
+        List<Attendance> attendances = attendanceRepository.findByUser(user);
+        boolean hasActiveCheckIn = attendances.stream().anyMatch(a -> a.getCheckOutTime() == null);
+
+        if (hasActiveCheckIn) {
+            throw new IllegalStateException("User has already checked in and not checked out yet.");
+        }
+
+        // Ensure user is correctly associated
+        Attendance attendance = new Attendance();
+        attendance.setUser(user);
+        attendance.setCheckInTime(LocalDateTime.now());
+        attendanceRepository.save(attendance);
+    }
+
+    @Transactional
+    public void checkOut(User user) {
+        if (user == null) {
+            throw new IllegalArgumentException("User cannot be null during check-out");
+        }
+        System.out.println("Checking out user: " + user.getUsername());
+
+        List<Attendance> attendances = attendanceRepository.findByUser(user);
+        Attendance lastAttendance = attendances.stream()
+            .filter(a -> a.getCheckOutTime() == null)
+            .findFirst()
+            .orElseThrow(() -> new IllegalStateException("No active check-in found for user."));
+
+        lastAttendance.setCheckOutTime(LocalDateTime.now());
+        attendanceRepository.save(lastAttendance);
+    }
+
+    public List<Attendance> getAttendanceHistory(User user) {
+        return attendanceRepository.findByUser(user);
+    }
+}
+------------------------------------------------------------------
+UserService.java
+package com.attendanceapp.service;
+
+import com.attendanceapp.model.User;
+import com.attendanceapp.Repositories.UserRepository;
+import org.springframework.stereotype.Service;
+
+@Service
+public class UserService {
+
+    private final UserRepository userRepository;
+
+    public UserService(UserRepository userRepository) {
+        this.userRepository = userRepository;
+    }
+
+    public User findByUsername(String username) {
+        return userRepository.findByUsername(username).orElse(null);
+    }
+}
+-----------------------------------------------------------------------
+
+EmployeeAttendanceAppApplication.java
+package com.attendanceapp;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class EmployeeAttendanceAppApplication {
+
+	public static void main(String[] args) {
+		SpringApplication.run(EmployeeAttendanceAppApplication.class, args);
+	}
+
+}
+----------------------------------------------------------
+C:\Users\maha3\OneDrive\Desktop\Spring boot projects\attendance\src\main\resources\templates
+
+add-user.html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Add User</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+            width: 350px;
+            text-align: center;
+        }
+        h1 {
+            color: #333;
+        }
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: bold;
+        }
+        input, select {
+            width: 100%;
+            padding: 0.5rem;
+            margin-bottom: 1rem;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        a {
+            display: block;
+            margin-top: 1rem;
+            color: #007bff;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Add a New User</h1>
+        <form action="/admin/add-user" method="post">
+            <label for="username">Username:</label>
+            <input type="text" id="username" name="username" required>
+
+            <label for="password">Password:</label>
+            <input type="password" id="password" name="password" required>
+
+            <label for="role">Role:</label>
+            <select id="role" name="role" required>
+                <option value="EMPLOYEE">Employee</option>
+                <option value="MANAGER">Manager</option>
+                <option value="ADMIN">Admin</option>
+            </select>
+
+            <button type="submit">Add User</button>
+        </form>
+        <a href="/admin/dashboard">Back to Dashboard</a>
+    </div>
+</body>
+</html>
+----------------------------------------------------
+admin.html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+            width: 350px;
+            text-align: center;
+        }
+        h1 {
+            color: #333;
+        }
+        ul {
+            list-style: none;
+            padding: 0;
+        }
+        li {
+            margin: 1rem 0;
+        }
+        a {
+            text-decoration: none;
+            color: white;
+            background-color: #007bff;
+            padding: 0.5rem 1rem;
+            border-radius: 5px;
+            display: block;
+        }
+        a:hover {
+            background-color: #0056b3;
+        }
+        .logout {
+            background-color: #dc3545;
+        }
+        .logout:hover {
+            background-color: #c82333;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Welcome, Admin!</h1>
+        <ul>
+            <li><a href="/admin/add-user">Add User</a></li>
+            <li><a href="/admin/view-users">View Users</a></li>
+            <li><a href="/logout" class="logout">Logout</a></li>
+        </ul>
+    </div>
+</body>
+</html>
+------------------------------------------------------
+check-in-success.html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Check-In Successful</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f4f4f4; text-align: center; padding: 50px; }
+        .container { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1); display: inline-block; }
+        h1 { color: #2d8cf0; }
+        a { text-decoration: none; padding: 10px 20px; background: #2d8cf0; color: white; border-radius: 5px; }
+        a:hover { background: #1c6ebf; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Check-In Successful!</h1>
+        <p>You have successfully checked in.</p>
+        <a href="/employee/dashboard">Back to Dashboard</a>
+    </div>
+</body>
+</html>
+-----------------------------------------------------------
+check-out-success.html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Check-Out Successful</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f4f4f4; text-align: center; padding: 50px; }
+        .container { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1); display: inline-block; }
+        h1 { color: #f56c6c; }
+        a { text-decoration: none; padding: 10px 20px; background: #f56c6c; color: white; border-radius: 5px; }
+        a:hover { background: #d9534f; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Check-Out Successful!</h1>
+        <p>You have successfully checked out.</p>
+        <a href="/employee/dashboard">Back to Dashboard</a>
+    </div>
+</body>
+</html>
+---------------------------------------------------------
+employee-attendance.html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attendance History</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+        }
+        h1 {
+            color: #333;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        th, td {
+            border: 1px solid #ccc;
+            padding: 10px;
+            text-align: left;
+        }
+        th {
+            background-color: #f4f4f4;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        a {
+            text-decoration: none;
+            color: #0077cc;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Your Attendance History</h1>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Check-In Time</th>
+                <th>Check-Out Time</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr th:each="attendance : ${attendanceHistory}">
+                <td th:text="${attendance.checkInTime}"></td>
+                <td th:text="${attendance.checkOutTime != null ? attendance.checkOutTime : 'Not Checked Out'}"></td>
+            </tr>
+        </tbody>
+    </table>
+
+    <a href="/employee/dashboard">Back to Dashboard</a>
+
+</body>
+</html>
+----------------------------------------------------------
+employee.html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Employee Dashboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f4f4f4; text-align: center; padding: 50px; }
+        .container { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1); display: inline-block; width: 80%; max-width: 600px; }
+        h2 { color: #2d8cf0; }
+        button { padding: 10px 20px; background: #2d8cf0; color: white; border: none; border-radius: 5px; cursor: pointer; margin: 10px 0; }
+        button:hover { background: #1c6ebf; }
+        a { text-decoration: none; padding: 10px 20px; background: #555; color: white; border-radius: 5px; display: inline-block; margin-top: 20px; }
+        a:hover { background: #333; }
+        p { font-size: 1.1em; }
+        .success { color: #28a745; }
+        .error { color: #dc3545; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+        th { background-color: #2d8cf0; color: white; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Welcome to the Employee Dashboard!</h2>
+
+        <!-- Automatic Check-in/Check-out -->
+        <form action="/employee/check-in" method="post">
+            <button type="submit">Check In</button>
+        </form>
+        <form action="/employee/check-out" method="post">
+            <button type="submit">Check Out</button>
+        </form>
+
+        <!-- Feedback messages -->
+        <div th:if="${success}" class="success">
+            <p>[[${success}]]</p>
+        </div>
+        <div th:if="${error}" class="error">
+            <p>[[${error}]]</p>
+        </div>
+
+        <!-- Attendance History -->
+        <h2>Your Attendance History</h2>
+        <div th:if="${attendanceHistory}">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Check-in Time</th>
+                        <th>Check-out Time</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr th:each="attendance : ${attendanceHistory}">
+                        <td th:text="${attendance.checkInTime}">Check-in time</td>
+                        <td th:text="${attendance.checkOutTime != null ? attendance.checkOutTime : 'N/A'}">Check-out time</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Links -->
+        <a href="/employee/attendance">View Full Attendance History</a>
+        <a href="/logout">Logout</a>
+    </div>
+</body>
+</html>
+------------------------------------------
+error.html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Error</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f4f4f4; text-align: center; padding: 50px; }
+        .container { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1); display: inline-block; }
+        h1 { color: #ff4d4d; }
+        p { color: #555; }
+        a { text-decoration: none; padding: 10px 20px; background: #ff4d4d; color: white; border-radius: 5px; }
+        a:hover { background: #cc0000; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Error!</h1>
+        <p>Something went wrong. Please try again.</p>
+        <a href="/dashboard">Go back to Dashboard</a>
+    </div>
+</body>
+</html>
+---------------------------------------------------------
+login.html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login | Employee Attendance System</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: "Arial", sans-serif;
+        }
+
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: #f4f4f4;
+            padding: 20px;
+            flex-direction: column;
+            animation: fadeIn 1.2s ease-in-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .logo {
+            width: 100px;
+            height: auto;
+            margin-bottom: 1rem;
+            animation: slideDown 1s ease-out;
+        }
+
+        @keyframes slideDown {
+            from {
+                transform: translateY(-50px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .heading {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #0073e6;
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+
+        .login-container {
+            background: #fff;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+            width: 100%;
+            max-width: 400px;
+            animation: zoomIn 0.8s ease-in-out;
+        }
+
+        @keyframes zoomIn {
+            from {
+                transform: scale(0.8);
+                opacity: 0;
+            }
+            to {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        h2 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 1.5rem;
+        }
+
+        label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+            color: #555;
+        }
+
+        input {
+            width: 100%;
+            padding: 0.8rem;
+            margin-bottom: 1.5rem;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 1rem;
+        }
+
+        button {
+            width: 100%;
+            padding: 0.8rem;
+            background: #0073e6;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        button:hover {
+            background: #005bb5;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 1.5rem;
+            font-size: 0.9rem;
+        }
+
+        .footer a {
+            color: #0073e6;
+            text-decoration: none;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+
+        .message {
+            text-align: center;
+            margin-top: 1rem;
+            font-size: 0.9rem;
+        }
+
+        .error {
+            color: #d9534f;
+        }
+
+        .success {
+            color: #5cb85c;
+        }
+    </style>
+</head>
+<body>
+    <div class="heading">
+        🚀 Employee Attendance System
+    </div>
+
+    <div class="login-container">
+        <h2>Login</h2>
+        <form method="post" action="/login">
+            <label for="username">Username</label>
+            <input type="text" id="username" name="username" required>
+
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" required>
+
+            <button type="submit">Login</button>
+        </form>
+
+        <div th:if="${param.error}" class="message error">
+            Invalid username or password.
+        </div>
+
+        <div th:if="${param.logout}" class="message success">
+            You have been logged out.
+        </div>
+
+        <div class="footer">
+            <a href="/forgot-password">Forgot Password?</a>
+        </div>
+    </div>
+</body>
+</html>
+------------------------------------------------------------------
+manager.html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manager Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            width: 350px;
+        }
+        h1 {
+            color: #333;
+        }
+        ul {
+            list-style: none;
+            padding: 0;
+        }
+        li {
+            margin-bottom: 1rem;
+        }
+        a {
+            display: block;
+            padding: 0.5rem;
+            background-color: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+        }
+        a:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Welcome to the Manager Dashboard!</h1>
+        <ul>
+            <li><a href="/manager/mark-attendance">Mark Attendance</a></li>
+            <li><a href="/manager/view-attendance">View Attendance History</a></li>
+            <li><a href="/logout">Logout</a></li>
+        </ul>
+    </div>
+</body>
+</html>
+-----------------------------------------------------------------
+manual-dashboards.html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manual Check-in/Check-out</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f4f4f4; text-align: center; padding: 50px; }
+        .container { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1); display: inline-block; }
+        h2 { color: #2d8cf0; }
+        label { display: block; margin-bottom: 5px; }
+        input { padding: 10px; margin-bottom: 10px; width: 100%; border: 1px solid #ccc; border-radius: 5px; }
+        button { padding: 10px 20px; background: #2d8cf0; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        button:hover { background: #1c6ebf; }
+        a { display: block; margin-top: 20px; text-decoration: none; color: #2d8cf0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Manual Check-in/Check-out</h2>
+        <form action="/employee/manual-check-in" method="post">
+            <label for="username">Enter Username:</label>
+            <input type="text" id="username" name="username" required>
+            <button type="submit">Manual Check-in</button>
+        </form>
+        <br>
+        <form action="/employee/manual-check-out" method="post">
+            <label for="username">Enter Username:</label>
+            <input type="text" id="username" name="username" required>
+            <button type="submit">Manual Check-out</button>
+        </form>
+        <a href="/employee/dashboard">Back to Employee Dashboard</a>
+    </div>
+</body>
+</html>
+-------------------------------------------------------------------
+mark-attendance.html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mark Attendance</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+            width: 400px;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        label {
+            font-weight: bold;
+            display: block;
+            margin-bottom: 0.5rem;
+        }
+        select {
+            width: 100%;
+            padding: 0.5rem;
+            margin-bottom: 1.5rem;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 0.5rem;
+            border-radius: 5px;
+            cursor: pointer;
+            width: 100%;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        a {
+            display: block;
+            margin-top: 1rem;
+            text-align: center;
+            color: #007bff;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Mark Attendance</h1>
+        <form action="/manager/mark-attendance" method="post">
+            <label for="userId">Select Employee:</label>
+            <select id="userId" name="userId">
+                <th:block th:each="user : ${users}">
+                    <option th:value="${user.id}" th:text="${user.username}"></option>
+                </th:block>
+            </select>
+            <button type="submit">Mark Attendance</button>
+        </form>
+        <a href="/manager/dashboard">Back to Dashboard</a>
+    </div>
+</body>
+</html>
+-----------------------------------------------------------
+view-attendance.html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attendance History</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+            width: 80%;
+            max-width: 600px;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        ul {
+            list-style: none;
+            padding: 0;
+        }
+        li {
+            background: #f9f9f9;
+            padding: 1rem;
+            border-bottom: 1px solid #ccc;
+        }
+        li:last-child {
+            border-bottom: none;
+        }
+        a {
+            display: block;
+            margin-top: 1rem;
+            padding: 0.5rem;
+            background-color: #007bff;
+            color: white;
+            text-align: center;
+            text-decoration: none;
+            border-radius: 5px;
+        }
+        a:hover {
+            background-color: #0056b3;
+        }
+        .check-in {
+            color: green;
+        }
+        .check-out {
+            color: red;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Attendance History</h1>
+        <ul>
+            <th:block th:each="attendance : ${attendanceRecords}">
+                <li>
+                    <strong th:text="${attendance.user.username}"></strong> - 
+                    <span class="check-in">Check-in: 
+                        <span th:text="${attendance.checkInTime != null ? #temporals.format(attendance.checkInTime, 'dd/MM/yy, hh:mm a') : 'Not marked'}"></span>
+                    </span>
+                    <th:block th:if="${attendance.checkOutTime != null}">
+                        <span class="check-out">, Check-out: 
+                            <span th:text="${#temporals.format(attendance.checkOutTime, 'dd/MM/yy, hh:mm a')}"></span>
+                        </span>
+                    </th:block>
+                </li>
+            </th:block>
+        </ul>
+        <a href="/manager/dashboard">Back to Dashboard</a>
+    </div>
+</body>
+</html>
+-----------------------------------------------------------
+view-users.html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>View Users</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+            width: 80%;
+            max-width: 800px;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 1rem;
+        }
+        th, td {
+            border: 1px solid #ccc;
+            padding: 0.8rem;
+            text-align: left;
+        }
+        th {
+            background-color: #007bff;
+            color: white;
+        }
+        tr:nth-child(even) {
+            background-color: #f4f4f4;
+        }
+        a {
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            background-color: #007bff;
+            color: white;
+            border-radius: 5px;
+            text-decoration: none;
+        }
+        a:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Registered Users</h1>
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Username</th>
+                    <th>Role</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr th:each="user : ${users}">
+                    <td th:text="${user.id}"></td>
+                    <td th:text="${user.username}"></td>
+                    <td th:text="${user.role}"></td>
+                </tr>
+            </tbody>
+        </table>
+        <a href="/admin/dashboard">Back to Dashboard</a>
+    </div>
+</body>
+</html>
+-------------------------------------------------------
+application.properties
+# Database configuration
+spring.datasource.url=jdbc:mysql://localhost:3306/employee_attendance
+spring.datasource.username=root
+spring.datasource.password=lakshmi
+spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver
+
+# Hibernate configuration
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.show-sql=true
+spring.jpa.database-platform=org.hibernate.dialect.MySQLDialect
+
+# Spring Security
+spring.security.user.password=password
+server.error.include-message=always
+spring.web.resources.static-locations=classpath:/static/
+----------------------------------------------------------------------------
+pom.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+	<parent>
+		<groupId>org.springframework.boot</groupId>
+		<artifactId>spring-boot-starter-parent</artifactId>
+		<version>3.4.3</version>
+		<relativePath/> <!-- lookup parent from repository -->
+	</parent>
+	<groupId>com.attendanceapp</groupId>
+	<artifactId>attendance</artifactId>
+	<version>0.0.1-SNAPSHOT</version>
+	<name>Employee Attendance App</name>
+	<description>A Spring Boot-based Employee Attendance Application with Admin, Manager, and Employee roles.</description>
+	<url/>
+	<licenses>
+		<license/>
+	</licenses>
+	<developers>
+		<developer/>
+	</developers>
+	<scm>
+		<connection/>
+		<developerConnection/>
+		<tag/>
+		<url/>
+	</scm>
+	<properties>
+		<java.version>21</java.version>
+	</properties>
+	<dependencies>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-data-jpa</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-security</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-thymeleaf</artifactId>
+		</dependency>
+		<dependency>
+      		<groupId>org.projectlombok</groupId>
+      		<artifactId>lombok</artifactId>
+      		<optional>true</optional>
+    	</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-web</artifactId>
+		</dependency>
+		<dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-devtools</artifactId>
+            <scope>runtime</scope>
+            <optional>true</optional>
+        </dependency>
+		<dependency>
+			<groupId>org.thymeleaf.extras</groupId>
+			<artifactId>thymeleaf-extras-springsecurity6</artifactId>
+		</dependency>
+
+		<dependency>
+			<groupId>com.mysql</groupId>
+			<artifactId>mysql-connector-j</artifactId>
+			<scope>runtime</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.security</groupId>
+			<artifactId>spring-security-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+	</dependencies>
+
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.springframework.boot</groupId>
+				<artifactId>spring-boot-maven-plugin</artifactId>
+			</plugin>
+		</plugins>
+	</build>
+
+</project>

@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Employee Dashboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f4f4f4; text-align: center; padding: 50px; }
+        .container { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1); display: inline-block; width: 80%; max-width: 600px; }
+        h2 { color: #2d8cf0; }
+        button { padding: 10px 20px; background: #2d8cf0; color: white; border: none; border-radius: 5px; cursor: pointer; margin: 10px 0; }
+        button:hover { background: #1c6ebf; }
+        a { text-decoration: none; padding: 10px 20px; background: #555; color: white; border-radius: 5px; display: inline-block; margin-top: 20px; }
+        a:hover { background: #333; }
+        p { font-size: 1.1em; }
+        .success { color: #28a745; }
+        .error { color: #dc3545; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+        th { background-color: #2d8cf0; color: white; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Welcome to the Employee Dashboard!</h2>
+
+        <!-- Automatic Check-in/Check-out -->
+        <form action="/employee/check-in" method="post">
+            <button type="submit">Check In</button>
+        </form>
+        <form action="/employee/check-out" method="post">
+            <button type="submit">Check Out</button>
+        </form>
+
+        <!-- Feedback messages -->
+        <div th:if="${success}" class="success">
+            <p>[[${success}]]</p>
+        </div>
+        <div th:if="${error}" class="error">
+            <p>[[${error}]]</p>
+        </div>
+
+        <!-- Attendance History -->
+        <h2>Your Attendance History</h2>
+        <div th:if="${attendanceHistory}">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Check-in Time</th>
+                        <th>Check-out Time</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr th:each="attendance : ${attendanceHistory}">
+                        <td th:text="${attendance.checkInTime}">Check-in time</td>
+                        <td th:text="${attendance.checkOutTime != null ? attendance.checkOutTime : 'N/A'}">Check-out time</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Links -->
+        <a href="/employee/attendance">View Full Attendance History</a>
+        <a href="/logout">Logout</a>
+    </div>
+</body>
+</html>

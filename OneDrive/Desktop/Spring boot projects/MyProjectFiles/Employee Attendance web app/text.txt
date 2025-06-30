@@ -1,0 +1,49 @@
+Mastering Python using Pareto Principle
+1.DataTypes
+2.Variables, Comments
+3.Control flow statements
+4.loops
+5.Functions
+6.List, Tuples, Sets, Dictionaries
+7.Operators
+8.Class and Object
+9.File Input/Output
+10.Object Oriented Programming
+11.Error Handling
+12.Module and Packages
+13. Regular Expressions
+14. Decorators
+15. Generators and Iterators
+16. Lambda Functions
+17. Map, Filter, Reduce
+18. Context Manager
+19. Type Hinting
+20. Unit Testing  
+21. Debugging
+22. Memory Management
+23. Multithreading
+24. Web Development
+25. Data Structures
+26. Database Operations
+27. Data Analysis and Visualization
+28. Machine Learning
+29. Web Scraping
+30. Security
+31. Testing Frameworks
+32. Logging Frameworks
+33. GUI Development
+34. Network Programming
+35. Cryptography
+36. API Development
+37. Data Compression
+38. Data Encryption
+39. Data Validation
+40. Data Serialization
+41. Data Deserialization
+42. Data Merging
+43. Data Slicing
+44. Data Shuffling
+45. Data Reshaping
+46. Data Grouping
+47. Data Sorting
+48. Data Aggregation

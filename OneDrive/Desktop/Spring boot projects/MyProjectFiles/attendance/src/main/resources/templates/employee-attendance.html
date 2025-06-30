@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attendance History</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+        }
+        h1 {
+            color: #333;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        th, td {
+            border: 1px solid #ccc;
+            padding: 10px;
+            text-align: left;
+        }
+        th {
+            background-color: #f4f4f4;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        a {
+            text-decoration: none;
+            color: #0077cc;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Your Attendance History</h1>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Check-In Time</th>
+                <th>Check-Out Time</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr th:each="attendance : ${attendanceHistory}">
+                <td th:text="${attendance.checkInTime}"></td>
+                <td th:text="${attendance.checkOutTime != null ? attendance.checkOutTime : 'Not Checked Out'}"></td>
+            </tr>
+        </tbody>
+    </table>
+
+    <a href="/employee/dashboard">Back to Dashboard</a>
+
+</body>
+</html>

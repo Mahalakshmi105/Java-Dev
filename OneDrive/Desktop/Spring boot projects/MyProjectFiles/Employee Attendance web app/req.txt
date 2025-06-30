@@ -1,0 +1,221 @@
+Create a web-based Employee Attendance Application with two types of user access:
+Managerial Access and Employee Access, along with an Admin Page for overall management. The application should include a login system to differentiate user roles. Employee Access should allow employees to mark attendance and view their attendance history. Managerial Access should enable managers to view attendance records of their team members and generate reports. The Admin Page should allow administrators to manage user roles, add or remove employees, and configure application settings. Use responsive design principles to ensure the application is accessible across devices.
+
+
+
+INSERT INTO user (username, password, role) VALUES ('admin', 'admin123', 'ADMIN'),('manager', 'manager123', 'MANAGER'),('employee1', 'employee123', 'EMPLOYEE'),('employee2', 'employee123', 'EMPLOYEE');
+
+Enter password: *******
+Welcome to the MySQL monitor.  Commands end with ; or \g.
+Your MySQL connection id is 9
+Server version: 8.0.39 MySQL Community Server - GPL
+
+Copyright (c) 2000, 2024, Oracle and/or its affiliates.
+
+Oracle is a registered trademark of Oracle Corporation and/or its
+affiliates. Other names may be trademarks of their respective
+owners.
+
+Type 'help;' or '\h' for help. Type '\c' to clear the current input statement.
+
+mysql> CREATE DATABASE employee_attendance;
+Query OK, 1 row affected (0.02 sec)
+
+mysql> USE employee_attendance;
+Database changed
+mysql> -- User TableCREATE TABLE users (    id INT AUTO_INCREMENT PRIMARY KEY,    username VARCHAR(50) UNIQUE NOT NULL,    password VARCHAR(255) NOT NULL,    role ENUM('EMPLOYEE', 'MANAGER', 'ADMIN') NOT NULL);
+mysql> -- Attendance TableCREATE TABLE attendance (    id INT AUTO_INCREMENT PRIMARY KEY,    user_id INT NOT NULL,    check_in TIMESTAMP DEFAULT CURRENT_TIMESTAMP,    check_out TIMESTAMP NULL,    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE);
+mysql> -- Settings Table (For Admin)CREATE TABLE settings (    id INT AUTO_INCREMENT PRIMARY KEY,    work_hours_per_day INT DEFAULT 8,    allow_remote_attendance BOOLEAN DEFAULT FALSE);
+mysql> show tables;
+Empty set (0.09 sec)
+
+mysql> CREATE TABLE users (    id INT AUTO_INCREMENT PRIMARY KEY,    username VARCHAR(50) UNIQUE NOT NULL,    password VARCHAR(255) NOT NULL,    role ENUM('EMPLOYEE', 'MANAGER', 'ADMIN') NOT NULL);
+Query OK, 0 rows affected (0.06 sec)
+
+mysql> CREATE TABLE attendance (    id INT AUTO_INCREMENT PRIMARY KEY,    user_id INT NOT NULL,    check_in TIMESTAMP DEFAULT CURRENT_TIMESTAMP,    check_out TIMESTAMP NULL,    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE);
+Query OK, 0 rows affected (0.08 sec)
+
+mysql> CREATE TABLE settings (    id INT AUTO_INCREMENT PRIMARY KEY,    work_hours_per_day INT DEFAULT 8,    allow_remote_attendance BOOLEAN DEFAULT FALSE);
+Query OK, 0 rows affected (0.03 sec)
+
+mysql> show tables;
++-------------------------------+
+| Tables_in_employee_attendance |
++-------------------------------+
+| attendance                    |
+| settings                      |
+| users                         |
++-------------------------------+
+3 rows in set (0.01 sec)
+
+mysql> ALTER TABLE usersADD created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,ADD updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,ADD updated_at TIMESTAMP DEFAULT ' at line 1
+mysql> ALTER TABLE usersADD created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP' at line 1
+mysql> ALTER TABLE users ADD created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+Query OK, 0 rows affected (0.04 sec)
+Records: 0  Duplicates: 0  Warnings: 0
+
+mysql> ALTER TABLE users ADD updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP;
+Query OK, 0 rows affected (0.02 sec)
+Records: 0  Duplicates: 0  Warnings: 0
+
+mysql> ALTER TABLE attendance ADD status ENUM('CHECKED_IN', 'CHECKED_OUT', 'MISSED') DEFAULT 'CHECKED_IN';
+Query OK, 0 rows affected (0.03 sec)
+Records: 0  Duplicates: 0  Warnings: 0
+
+mysql> ALTER TABLE attendance ADD created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+Query OK, 0 rows affected (0.03 sec)
+Records: 0  Duplicates: 0  Warnings: 0
+
+mysql> ALTER TABLE attendance ADD updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP;
+Query OK, 0 rows affected (0.02 sec)
+Records: 0  Duplicates: 0  Warnings: 0
+
+mysql> CREATE TABLE token_blacklist (    id INT AUTO_INCREMENT PRIMARY KEY,    token VARCHAR(255) NOT NULL,    blacklisted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+Query OK, 0 rows affected (0.04 sec)
+
+mysql> INSERT INTO users (username, password, role) VALUES ('admin', 'admin123', 'ADMIN'),('manager', 'manager123', 'MANAGER'),('employee1', 'employee123', 'EMPLOYEE'),('employee2', 'employee123', 'EMPLOYEE');
+Query OK, 4 rows affected (0.03 sec)
+Records: 4  Duplicates: 0  Warnings: 0
+
+mysql> INSERT INTO attendance (user_id, check_in) VALUES (3, NOW()),  -- employee1 checks in(4, NOW());  -- employee2 checks in
+    -> ^C
+mysql> INSERT INTO attendance (user_id, check_in) VALUES (3, NOW()), (4, NOW());
+Query OK, 2 rows affected (0.02 sec)
+Records: 2  Duplicates: 0  Warnings: 0
+
+mysql> INSERT INTO settings (work_hours_per_day, allow_remote_attendance)VALUES (8, TRUE);
+Query OK, 1 row affected (0.02 sec)
+
+mysql> SELECT * FROM users;
++----+-----------+-------------+----------+---------------------+---------------------+
+| id | username  | password    | role     | created_at          | updated_at          |
++----+-----------+-------------+----------+---------------------+---------------------+
+|  1 | admin     | admin123    | ADMIN    | 2025-03-05 15:18:40 | 2025-03-05 15:18:40 |
+|  2 | manager   | manager123  | MANAGER  | 2025-03-05 15:18:40 | 2025-03-05 15:18:40 |
+|  3 | employee1 | employee123 | EMPLOYEE | 2025-03-05 15:18:40 | 2025-03-05 15:18:40 |
+|  4 | employee2 | employee123 | EMPLOYEE | 2025-03-05 15:18:40 | 2025-03-05 15:18:40 |
++----+-----------+-------------+----------+---------------------+---------------------+
+4 rows in set (0.01 sec)
+
+mysql> SELECT a.id, u.username, a.check_in, a.check_out, a.status
+    -> FROM attendance a
+    -> JOIN users u ON a.user_id = u.id;
++----+-----------+---------------------+-----------+------------+
+| id | username  | check_in            | check_out | status     |
++----+-----------+---------------------+-----------+------------+
+|  1 | employee1 | 2025-03-05 15:19:24 | NULL      | CHECKED_IN |
+|  2 | employee2 | 2025-03-05 15:19:24 | NULL      | CHECKED_IN |
++----+-----------+---------------------+-----------+------------+
+2 rows in set (0.00 sec)
+
+mysql> SELECT * FROM settings;
++----+--------------------+-------------------------+
+| id | work_hours_per_day | allow_remote_attendance |
++----+--------------------+-------------------------+
+|  1 |                  8 |                       1 |
++----+--------------------+-------------------------+
+1 row in set (0.00 sec)
+
+mysql> -- Insert an admin user (password: admin)
+mysql> INSERT INTO users (username, password, role)
+    -> VALUES ('admin', '$2a$10$D4G5f18o7a4I8uG2A2G2oOv8nQ1VZOeD5X7pFoF/5skhG/76', 'ADMIN');
+ERROR 1062 (23000): Duplicate entry 'admin' for key 'users.username'
+mysql> INSERT INTO users (username, password, role)VALUES ('admin', '$2a$10$D4G5f18o7a4I8uG2A2G2oOv8nQ1VZOeD5X7pFoF/5skhG/76', 'ADMIN');
+ERROR 1062 (23000): Duplicate entry 'admin' for key 'users.username'
+mysql> SELECT * FROM users;
++----+-----------+-------------+----------+---------------------+---------------------+
+| id | username  | password    | role     | created_at          | updated_at          |
++----+-----------+-------------+----------+---------------------+---------------------+
+|  1 | admin     | admin123    | ADMIN    | 2025-03-05 15:18:40 | 2025-03-05 15:18:40 |
+|  2 | manager   | manager123  | MANAGER  | 2025-03-05 15:18:40 | 2025-03-05 15:18:40 |
+|  3 | employee1 | employee123 | EMPLOYEE | 2025-03-05 15:18:40 | 2025-03-05 15:18:40 |
+|  4 | employee2 | employee123 | EMPLOYEE | 2025-03-05 15:18:40 | 2025-03-05 15:18:40 |
++----+-----------+-------------+----------+---------------------+---------------------+
+4 rows in set (0.02 sec)
+
+mysql> SELECT * FROM users;
++----+-----------+-------------+----------+---------------------+---------------------+
+| id | username  | password    | role     | created_at          | updated_at          |
++----+-----------+-------------+----------+---------------------+---------------------+
+|  1 | admin     | admin123    | ADMIN    | 2025-03-05 15:18:40 | 2025-03-05 15:18:40 |
+|  2 | manager   | manager123  | MANAGER  | 2025-03-05 15:18:40 | 2025-03-05 15:18:40 |
+|  3 | employee1 | employee123 | EMPLOYEE | 2025-03-05 15:18:40 | 2025-03-05 15:18:40 |
+|  4 | employee2 | employee123 | EMPLOYEE | 2025-03-05 15:18:40 | 2025-03-05 15:18:40 |
++----+-----------+-------------+----------+---------------------+---------------------+
+4 rows in set (0.00 sec)
+
+mysql> SELECT * FROM users;
++----+-----------+-------------+----------+---------------------+---------------------+
+| id | username  | password    | role     | created_at          | updated_at          |
++----+-----------+-------------+----------+---------------------+---------------------+
+|  1 | admin     | admin123    | ADMIN    | 2025-03-05 15:18:40 | 2025-03-05 15:18:40 |
+|  2 | manager   | manager123  | MANAGER  | 2025-03-05 15:18:40 | 2025-03-05 15:18:40 |
+|  3 | employee1 | employee123 | EMPLOYEE | 2025-03-05 15:18:40 | 2025-03-05 15:18:40 |
+|  4 | employee2 | employee123 | EMPLOYEE | 2025-03-05 15:18:40 | 2025-03-05 15:18:40 |
++----+-----------+-------------+----------+---------------------+---------------------+
+4 rows in set (0.01 sec)
+
+mysql> SHOW TABLES;
++-------------------------------+
+| Tables_in_employee_attendance |
++-------------------------------+
+| attendance                    |
+| settings                      |
+| token_blacklist               |
+| user                          |
+| users                         |
++-------------------------------+
+5 rows in set (0.02 sec)
+
+mysql>
+mysql> select * from user;
+Empty set (0.01 sec)
+
+mysql> select * from settings;
++----+--------------------+-------------------------+
+| id | work_hours_per_day | allow_remote_attendance |
++----+--------------------+-------------------------+
+|  1 |                  8 |                       1 |
++----+--------------------+-------------------------+
+1 row in set (0.01 sec)
+
+mysql> select * from users;
++----+-----------+-------------+----------+---------------------+---------------------+
+| id | username  | password    | role     | created_at          | updated_at          |
++----+-----------+-------------+----------+---------------------+---------------------+
+|  1 | admin     | admin123    | ADMIN    | 2025-03-05 15:18:40 | 2025-03-05 15:18:40 |
+|  2 | manager   | manager123  | MANAGER  | 2025-03-05 15:18:40 | 2025-03-05 15:18:40 |
+|  3 | employee1 | employee123 | EMPLOYEE | 2025-03-05 15:18:40 | 2025-03-05 15:18:40 |
+|  4 | employee2 | employee123 | EMPLOYEE | 2025-03-05 15:18:40 | 2025-03-05 15:18:40 |
++----+-----------+-------------+----------+---------------------+---------------------+
+4 rows in set (0.00 sec)
+
+mysql> select * from users;
++----+-----------+-------------+----------+---------------------+---------------------+
+| id | username  | password    | role     | created_at          | updated_at          |
++----+-----------+-------------+----------+---------------------+---------------------+
+|  1 | admin     | admin123    | ADMIN    | 2025-03-05 15:18:40 | 2025-03-05 15:18:40 |
+|  2 | manager   | manager123  | MANAGER  | 2025-03-05 15:18:40 | 2025-03-05 15:18:40 |
+|  3 | employee1 | employee123 | EMPLOYEE | 2025-03-05 15:18:40 | 2025-03-05 15:18:40 |
+|  4 | employee2 | employee123 | EMPLOYEE | 2025-03-05 15:18:40 | 2025-03-05 15:18:40 |
++----+-----------+-------------+----------+---------------------+---------------------+
+4 rows in set (0.00 sec)
+
+mysql> INSERT INTO user (username, password, role) VALUES ('admin', 'admin123', 'ADMIN'),('manager', 'manager123', 'MANAGER'),('employee1', 'employee123', 'EMPLOYEE'),('employee2', 'employee123', 'EMPLOYEE');
+Query OK, 4 rows affected (0.01 sec)
+Records: 4  Duplicates: 0  Warnings: 0
+
+mysql> select * from user;
++----+-------------+----------+-----------+
+| id | password    | role     | username  |
++----+-------------+----------+-----------+
+|  1 | admin123    | ADMIN    | admin     |
+|  2 | manager123  | MANAGER  | manager   |
+|  3 | employee123 | EMPLOYEE | employee1 |
+|  4 | employee123 | EMPLOYEE | employee2 |
++----+-------------+----------+-----------+
+4 rows in set (0.00 sec)
+
+mysql>t (0.00 sec)
